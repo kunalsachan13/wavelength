@@ -1,0 +1,14 @@
+fastapi>=0.100.0
+requests>=2.31.0
+curl_cffi>=0.7.0
+beautifulsoup4
+pillow
+pyotp
+readerwriterlock
+validators
+colorama
+python-dotenv
+pymongo
+redis
+websockets
+spotapi

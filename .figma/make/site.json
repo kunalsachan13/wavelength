@@ -1,0 +1,14 @@
+{
+  "title": "Wavelength",
+  "description": "Your Music. Amplified. Stream full-length 320kbps tracks powered by Spotify and SpotAPI.",
+  "icons": {
+    "icon": "/logo.png"
+  },
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
