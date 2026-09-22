@@ -3,7 +3,8 @@ import { Track } from "../types";
 import { usePlayer } from "../store/usePlayerStore";
 import { useLibrary } from "../store/useLibraryStore";
 import { useDonations } from "../store/useDonationStore";
-import { Play, Pause, Heart, Sparkles, ListPlus } from "lucide-react";
+import { triggerMp3Download } from "../services/musicApi";
+import { Play, Pause, Heart, Sparkles, ListPlus, Download, Check, Loader2 } from "lucide-react";
 
 interface Props {
   track: Track;
@@ -30,11 +31,13 @@ function TrackRow({
   compact = false,
 }: Props) {
   const { state, playTrack, pause, resume } = usePlayer();
-  const { toggleLike, isLiked, openAddToPlaylist } = useLibrary();
+  const { toggleLike, isLiked, openAddToPlaylist, addDownloaded, isDownloaded } = useLibrary();
   const { openDonationModal } = useDonations();
   const [hovered, setHovered] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const liked = isLiked(track.id);
+  const downloaded = isDownloaded(track.id);
   const isCurrent = state.currentTrack?.id === track.id;
   const isPlaying = isCurrent && state.status === "playing";
 
@@ -44,6 +47,17 @@ function TrackRow({
     } else {
       playTrack(track, queue ?? [track]);
     }
+  };
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (downloading) return;
+    setDownloading(true);
+    addDownloaded(track);
+    triggerMp3Download(track.title, track.artist.name, track.album);
+    setTimeout(() => {
+      setDownloading(false);
+    }, 2000);
   };
 
   return (
@@ -181,6 +195,34 @@ function TrackRow({
             fill={liked ? "#5EEAD4" : "none"}
             strokeWidth={liked ? 0 : 2}
           />
+        </button>
+
+        {/* Download MP3 Button */}
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className={`p-1.5 rounded-full transition-all cursor-pointer ${
+            downloaded
+              ? "opacity-100 text-[#5EEAD4]"
+              : hovered
+              ? "opacity-100 text-[#a7a7a7] hover:text-[#5EEAD4] hover:scale-110 active:scale-95"
+              : "opacity-60 sm:opacity-0 text-[#a7a7a7]"
+          }`}
+          title={
+            downloading
+              ? "Preparing MP3 download..."
+              : downloaded
+              ? "Downloaded as MP3 (Click to download again)"
+              : "Download as MP3"
+          }
+        >
+          {downloading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[#5EEAD4]" />
+          ) : downloaded ? (
+            <Check className="w-4 h-4" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
         </button>
 
         <span className="text-xs text-[#a7a7a7] font-medium tabular-nums w-10 text-right">

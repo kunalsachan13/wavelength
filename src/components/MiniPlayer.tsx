@@ -18,7 +18,11 @@ import {
   ListMusic,
   ListPlus,
   Sparkles,
+  Download,
+  Check,
+  Loader2,
 } from "lucide-react";
+import { triggerMp3Download } from "../services/musicApi";
 
 function fmt(s: number) {
   if (!isFinite(s) || s < 0) return "0:00";
@@ -42,15 +46,28 @@ export default function MiniPlayer() {
     openNowPlaying,
   } = usePlayer();
   const { currentTime, duration } = usePlayerProgress();
-  const { toggleLike, isLiked, openAddToPlaylist } = useLibrary();
+  const { toggleLike, isLiked, openAddToPlaylist, addDownloaded, isDownloaded } = useLibrary();
   const { openDonationModal } = useDonations();
 
   const { currentTrack, status, volume, isMuted, isShuffled, repeatMode } = state;
   const [isHoveringBar, setIsHoveringBar] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const isPlaying = status === "playing";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const liked = currentTrack ? isLiked(currentTrack.id) : false;
+  const downloaded = currentTrack ? isDownloaded(currentTrack.id) : false;
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentTrack || downloading) return;
+    setDownloading(true);
+    addDownloaded(currentTrack);
+    triggerMp3Download(currentTrack.title, currentTrack.artist.name, currentTrack.album);
+    setTimeout(() => {
+      setDownloading(false);
+    }, 2000);
+  };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration) return;
@@ -144,6 +161,29 @@ export default function MiniPlayer() {
           title="Add to Playlist"
         >
           <ListPlus className="w-4 h-4" />
+        </button>
+
+        {/* Download MP3 Button */}
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="p-1.5 rounded-full hover:scale-110 active:scale-95 transition-all text-[#b3b3b3] hover:text-[#5EEAD4] cursor-pointer flex-shrink-0"
+          style={{ color: downloaded ? "#5EEAD4" : undefined }}
+          title={
+            downloading
+              ? "Preparing MP3 download..."
+              : downloaded
+              ? "Downloaded as MP3 (Click to download again)"
+              : "Download as MP3"
+          }
+        >
+          {downloading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[#5EEAD4]" />
+          ) : downloaded ? (
+            <Check className="w-4 h-4" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
         </button>
       </div>
 
@@ -274,6 +314,28 @@ export default function MiniPlayer() {
         >
           <Sparkles className="w-3.5 h-3.5 fill-black" />
           <span>Donate</span>
+        </button>
+
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="p-1.5 text-[#b3b3b3] hover:text-[#5EEAD4] transition-colors cursor-pointer"
+          style={{ color: downloaded ? "#5EEAD4" : undefined }}
+          title={
+            downloading
+              ? "Preparing MP3 download..."
+              : downloaded
+              ? "Downloaded as MP3 (Click to download again)"
+              : "Download Track as MP3"
+          }
+        >
+          {downloading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[#5EEAD4]" />
+          ) : downloaded ? (
+            <Check className="w-4 h-4" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
         </button>
 
         <button

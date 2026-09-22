@@ -17,9 +17,10 @@ import {
   Music2,
   X,
   Music,
+  Download,
 } from "lucide-react";
 
-type Tab = "playlists" | "liked" | "recent";
+type Tab = "playlists" | "liked" | "recent" | "downloaded";
 
 function EmptyState({
   icon,
@@ -62,9 +63,11 @@ export default function Library() {
   const {
     likedTracks,
     recentTracks,
+    downloadedTracks,
     userPlaylists,
     clearLiked,
     clearRecent,
+    clearDownloaded,
     createPlaylist,
   } = useLibrary();
   const { playTrack, pause, resume, state } = usePlayer();
@@ -175,6 +178,23 @@ export default function Library() {
           {recentTracks.length > 0 && (
             <span className="text-[10px] opacity-70 px-1.5 py-0.2 rounded-full bg-black/20">
               {recentTracks.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setTab("downloaded")}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            tab === "downloaded"
+              ? "bg-white text-black"
+              : "bg-white/10 text-white hover:bg-white/15"
+          }`}
+        >
+          <Download className="w-4 h-4" />
+          Downloaded MP3s
+          {downloadedTracks.length > 0 && (
+            <span className="text-[10px] opacity-70 px-1.5 py-0.2 rounded-full bg-black/20">
+              {downloadedTracks.length}
             </span>
           )}
         </button>
@@ -384,6 +404,62 @@ export default function Library() {
               title="No listening history"
               sub="Tracks you stream will appear here automatically so you can get back to them anytime."
               action="Explore Discover"
+              onAction={() => navigate({ id: "home" })}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ─── TAB 4: DOWNLOADED MP3S ─── */}
+      {tab === "downloaded" && (
+        <div className="space-y-4">
+          {downloadedTracks.length > 0 ? (
+            <div className="rounded-2xl p-4 sm:p-6 bg-[#181818]/60 border border-white/5 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-4 pb-2 border-b border-white/5">
+                <div>
+                  <h2 className="font-display font-bold text-xl text-white">Downloaded MP3s</h2>
+                  <p className="text-xs text-[#a7a7a7] mt-0.5">
+                    {downloadedTracks.length} tracks saved to your device in 320kbps MP3 format
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePlayQueue(downloadedTracks, false)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold text-black transition-all hover:scale-105 active:scale-95 shadow-md cursor-pointer"
+                    style={{ backgroundColor: "#5EEAD4" }}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                    Play All
+                  </button>
+                  <button
+                    onClick={() => handlePlayQueue(downloadedTracks, true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium text-white bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                    title="Shuffle downloaded tracks"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={clearDownloaded}
+                    className="p-2 rounded-full text-[#a7a7a7] hover:text-red-400 transition-colors cursor-pointer"
+                    title="Clear downloaded tracks history"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-0.5">
+                {downloadedTracks.map((t, idx) => (
+                  <TrackRow key={t.id} track={t} index={idx + 1} queue={downloadedTracks} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Download className="w-8 h-8 text-[#5EEAD4]" />}
+              title="No downloaded tracks yet"
+              sub="Click the download icon on any song to save it in high-fidelity 320kbps MP3 format to your device."
+              action="Discover Songs"
               onAction={() => navigate({ id: "home" })}
             />
           )}

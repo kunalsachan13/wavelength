@@ -19,7 +19,11 @@ import {
   Heart,
   Radio,
   Sparkles,
+  Download,
+  Check,
+  Loader2,
 } from "lucide-react";
+import { triggerMp3Download } from "../services/musicApi";
 
 function fmt(s: number) {
   if (!isFinite(s)) return "0:00";
@@ -43,12 +47,26 @@ export default function NowPlaying() {
     closeNowPlaying,
   } = usePlayer();
   const { currentTime, duration } = usePlayerProgress();
-  const { toggleLike, isLiked, openAddToPlaylist } = useLibrary();
+  const { toggleLike, isLiked, openAddToPlaylist, addDownloaded, isDownloaded } = useLibrary();
   const { openDonationModal } = useDonations();
 
   const { currentTrack, status, volume, isMuted, isShuffled, repeatMode } = state;
   const [showQueue, setShowQueue] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
   const liked = currentTrack ? isLiked(currentTrack.id) : false;
+  const downloaded = currentTrack ? isDownloaded(currentTrack.id) : false;
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentTrack || downloading) return;
+    setDownloading(true);
+    addDownloaded(currentTrack);
+    triggerMp3Download(currentTrack.title, currentTrack.artist.name, currentTrack.album);
+    setTimeout(() => {
+      setDownloading(false);
+    }, 2000);
+  };
 
   if (!currentTrack) return null;
 
@@ -210,6 +228,30 @@ export default function NowPlaying() {
                       fill: liked ? "#5EEAD4" : "none",
                     }}
                   />
+                </button>
+
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 transition-all cursor-pointer flex-shrink-0"
+                  style={{
+                    color: downloaded ? "#5EEAD4" : "#8A8A8E",
+                  }}
+                  title={
+                    downloading
+                      ? "Preparing MP3 download..."
+                      : downloaded
+                      ? "Downloaded as MP3 (Click to download again)"
+                      : "Download Track as MP3"
+                  }
+                >
+                  {downloading ? (
+                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-[#5EEAD4]" />
+                  ) : downloaded ? (
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 text-[#5EEAD4]" />
+                  ) : (
+                    <Download className="w-4 h-4 sm:w-5 sm:h-5 hover:text-[#5EEAD4] transition-colors" />
+                  )}
                 </button>
               </div>
             </div>

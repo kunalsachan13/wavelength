@@ -252,3 +252,28 @@ export async function checkHealth(): Promise<{ ok: boolean; spotapi: boolean }> 
   }
 }
 
+/**
+ * Generate backend URL to download track as 320kbps MP3.
+ */
+export function getTrackDownloadUrl(title: string, artist: string, album = ""): string {
+  return `${BASE}/stream/download?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`;
+}
+
+/**
+ * Trigger browser download of a track in MP3 format.
+ */
+export function triggerMp3Download(title: string, artist: string, album = ""): void {
+  const url = getTrackDownloadUrl(title, artist, album);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${artist ? `${artist} - ` : ""}${title}.mp3`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    if (document.body.contains(a)) {
+      document.body.removeChild(a);
+    }
+  }, 100);
+}
+
+

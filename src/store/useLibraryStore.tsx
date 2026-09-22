@@ -4,6 +4,7 @@ import { Track, Playlist } from "../types";
 interface LibraryState {
   likedTracks: Track[];
   recentTracks: Track[];
+  downloadedTracks: Track[];
   userPlaylists: Playlist[];
   playlists: Playlist[];
 }
@@ -14,6 +15,10 @@ interface LibraryCtx extends LibraryState {
   clearLiked: () => void;
   addRecent: (track: Track) => void;
   clearRecent: () => void;
+  addDownloaded: (track: Track) => void;
+  removeDownloaded: (trackId: string) => void;
+  isDownloaded: (trackId: string) => boolean;
+  clearDownloaded: () => void;
   createPlaylist: (name: string, description?: string) => Playlist;
   deletePlaylist: (playlistId: string) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
@@ -27,6 +32,7 @@ interface LibraryCtx extends LibraryState {
 const STORAGE_KEYS = {
   LIKED: "wl_liked_tracks",
   RECENT: "wl_recent_tracks",
+  DOWNLOADED: "wl_downloaded_tracks",
   PLAYLISTS: "wl_user_playlists",
 };
 
@@ -78,6 +84,9 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [recentTracks, setRecentTracks] = useState<Track[]>(() =>
     loadStorage<Track[]>(STORAGE_KEYS.RECENT, [])
   );
+  const [downloadedTracks, setDownloadedTracks] = useState<Track[]>(() =>
+    loadStorage<Track[]>(STORAGE_KEYS.DOWNLOADED, [])
+  );
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>(() =>
     loadStorage<Playlist[]>(STORAGE_KEYS.PLAYLISTS, DEFAULT_PLAYLISTS)
   );
@@ -99,6 +108,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     saveStorage(STORAGE_KEYS.RECENT, recentTracks);
   }, [recentTracks]);
+
+  useEffect(() => {
+    saveStorage(STORAGE_KEYS.DOWNLOADED, downloadedTracks);
+  }, [downloadedTracks]);
 
   useEffect(() => {
     saveStorage(STORAGE_KEYS.PLAYLISTS, userPlaylists);
@@ -138,6 +151,27 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     setRecentTracks([]);
   }, []);
 
+  // Downloaded Tracks handlers
+  const addDownloaded = useCallback((track: Track) => {
+    setDownloadedTracks((prev) => {
+      const filtered = prev.filter((t) => t.id !== track.id);
+      return [track, ...filtered];
+    });
+  }, []);
+
+  const removeDownloaded = useCallback((trackId: string) => {
+    setDownloadedTracks((prev) => prev.filter((t) => t.id !== trackId));
+  }, []);
+
+  const isDownloaded = useCallback(
+    (trackId: string) => downloadedTracks.some((t) => t.id === trackId),
+    [downloadedTracks]
+  );
+
+  const clearDownloaded = useCallback(() => {
+    setDownloadedTracks([]);
+  }, []);
+
   // Playlist handlers
   const createPlaylist = useCallback((name: string, description = ""): Playlist => {
     const newPl: Playlist = {
@@ -162,11 +196,9 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       prev.map((pl) => {
         if (pl.id !== playlistId) return pl;
         if (pl.tracks.some((t) => t.id === track.id)) return pl;
-        const updatedTracks = [...pl.tracks, track];
         return {
           ...pl,
-          tracks: updatedTracks,
-          coverArt: pl.tracks.length === 0 && track.coverArt ? track.coverArt : pl.coverArt,
+          tracks: [...pl.tracks, track],
         };
       })
     );
@@ -194,6 +226,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       value={{
         likedTracks,
         recentTracks,
+        downloadedTracks,
         userPlaylists,
         playlists: userPlaylists,
         activePlaylistTrack,
@@ -204,6 +237,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
         clearLiked,
         addRecent,
         clearRecent,
+        addDownloaded,
+        removeDownloaded,
+        isDownloaded,
+        clearDownloaded,
         createPlaylist,
         deletePlaylist,
         addTrackToPlaylist,

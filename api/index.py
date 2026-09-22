@@ -17,6 +17,8 @@ import sys
 import os
 import json
 import time
+import subprocess
+import shutil
 import threading
 import logging
 import re
@@ -25,7 +27,7 @@ import urllib.parse
 from typing import Any
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wavelength")
@@ -778,6 +780,44 @@ def get_album(album_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def _find_stream_url(title: str, artist: str) -> str | None:
+    """Find the best audio stream URL for a track from cache, JioSaavn, or Audius."""
+    cache_key = f"stream_{title.lower()}_{artist.lower()}"
+    now = time.time()
+    if cache_key in QUERY_CACHE:
+        cached_time, cached_data = QUERY_CACHE[cache_key]
+        if now - cached_time < CACHE_TTL:
+            return cached_data["audioUrl"]
+
+    # 1. JioSaavn (320kbps full-length)
+    result = _resolve_jiosaavn(title, artist)
+    if result:
+        QUERY_CACHE[cache_key] = (now, result)
+        return result["audioUrl"]
+
+    # 2. Try with cleaned title (remove feat., remix annotations, etc.)
+    if artist and len(title) > 3:
+        clean_title = re.sub(r"\([^)]*\)", "", title).replace("[", "").replace("]", "").strip()
+        result = _resolve_jiosaavn(clean_title, artist)
+        if result:
+            QUERY_CACHE[cache_key] = (now, result)
+            return result["audioUrl"]
+
+    # 3. Audius fallback
+    result = _resolve_audius(title, artist)
+    if result:
+        QUERY_CACHE[cache_key] = (now, result)
+        return result["audioUrl"]
+
+    return None
+
+
+def _sanitize_filename(name: str) -> str:
+    """Sanitize string for safe use in HTTP attachment filenames."""
+    cleaned = re.sub(r'[\\/*?:"<>|]', "", name).strip()
+    return re.sub(r'\s+', " ", cleaned)
+
+
 @app.api_route("/stream/resolve", methods=["GET", "HEAD"])
 def resolve_stream(
     title: str = Query(..., min_length=1),
@@ -789,36 +829,122 @@ def resolve_stream(
     This is the key endpoint that makes Spotify tracks playable.
     """
     logger.info("Resolving stream: %r by %r", title, artist)
-
-    # Check cache
-    cache_key = f"stream_{title.lower()}_{artist.lower()}"
-    now = time.time()
-    if cache_key in QUERY_CACHE:
-        cached_time, cached_data = QUERY_CACHE[cache_key]
-        if now - cached_time < CACHE_TTL:
-            return RedirectResponse(url=cached_data["audioUrl"], status_code=307)
-
-    # 1. JioSaavn (320kbps full-length)
-    result = _resolve_jiosaavn(title, artist)
-    if result:
-        QUERY_CACHE[cache_key] = (now, result)
-        return RedirectResponse(url=result["audioUrl"], status_code=307)
-
-    # 2. Try with cleaned title (remove feat., remix annotations, etc.)
-    if artist and len(title) > 3:
-        clean_title = re.sub(r"\([^)]*\)", "", title).replace("[", "").replace("]", "").strip()
-        result = _resolve_jiosaavn(clean_title, artist)
-        if result:
-            QUERY_CACHE[cache_key] = (now, result)
-            return RedirectResponse(url=result["audioUrl"], status_code=307)
-
-    # 3. Audius fallback
-    result = _resolve_audius(title, artist)
-    if result:
-        QUERY_CACHE[cache_key] = (now, result)
-        return RedirectResponse(url=result["audioUrl"], status_code=307)
-
+    audio_url = _find_stream_url(title, artist)
+    if audio_url:
+        return RedirectResponse(url=audio_url, status_code=307)
     raise HTTPException(status_code=404, detail="No audio stream found")
+
+
+@app.api_route("/stream/download", methods=["GET", "HEAD"])
+def download_stream(
+    title: str = Query(..., min_length=1),
+    artist: str = Query("", min_length=0),
+    album: str = Query("", min_length=0),
+) -> Any:
+    """
+    Download a track as a full-length 320kbps MP3 audio file.
+    Transcodes input stream (AAC/MP4/WebM) to MP3 with ID3 metadata tags (Title, Artist, Album)
+    using FFmpeg if installed, or directly streams audio as an attachment.
+    """
+    logger.info("Downloading stream as MP3: %r by %r", title, artist)
+    audio_url = _find_stream_url(title, artist)
+    if not audio_url:
+        raise HTTPException(status_code=404, detail="No audio stream found for download")
+
+    clean_artist = _sanitize_filename(artist)
+    clean_title = _sanitize_filename(title)
+    if clean_artist and clean_title:
+        base_name = f"{clean_artist} - {clean_title}"
+    else:
+        base_name = clean_title or "track"
+    filename = f"{base_name}.mp3"
+    encoded_filename = urllib.parse.quote(filename)
+
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if ffmpeg_bin:
+        try:
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-loglevel", "error",
+                "-i", audio_url,
+                "-vn",
+                "-c:a", "libmp3lame",
+                "-b:a", "320k",
+            ]
+            if clean_title:
+                cmd.extend(["-metadata", f"title={clean_title}"])
+            if clean_artist:
+                cmd.extend(["-metadata", f"artist={clean_artist}"])
+            if album:
+                cmd.extend(["-metadata", f"album={_sanitize_filename(album)}"])
+            cmd.extend(["-f", "mp3", "pipe:1"])
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1024 * 64,
+            )
+
+            def iter_mp3():
+                try:
+                    while True:
+                        chunk = proc.stdout.read(65536)
+                        if not chunk:
+                            break
+                        yield chunk
+                finally:
+                    try:
+                        proc.stdout.close()
+                    except Exception:
+                        pass
+                    proc.kill()
+                    proc.wait()
+
+            return StreamingResponse(
+                iter_mp3(),
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}',
+                    "Accept-Ranges": "none",
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Disposition",
+                },
+            )
+        except Exception as e:
+            logger.warning("FFmpeg transcode failed: %s, falling back to direct stream", e)
+
+    # Fallback without FFmpeg
+    try:
+        req = urllib.request.Request(audio_url, headers={"User-Agent": "Wavelength/2.0"})
+        resp = urllib.request.urlopen(req, timeout=30)
+
+        def iter_direct():
+            try:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                resp.close()
+
+        return StreamingResponse(
+            iter_direct(),
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}',
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
+        )
+    except Exception as e:
+        logger.error("Direct stream fetch failed: %s", e)
+        return RedirectResponse(url=audio_url, status_code=307)
+
 
 
 # Register all endpoints under /api/music and /api prefixes so all Vercel rewrites match
